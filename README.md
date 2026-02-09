@@ -1,4 +1,4 @@
-# Huawei ONT Metrics Scraper
+# Huawei ONT Exporter
 
 A Rust-based Prometheus exporter for Huawei ONT devices (specifically modeled for HG8145V5 and similar).
 
@@ -23,7 +23,7 @@ A Rust-based Prometheus exporter for Huawei ONT devices (specifically modeled fo
 ### Build
 
 ```bash
-cd huawei-ont-metrics
+cd huawei-ont-exporter
 cargo build --release
 ```
 
@@ -46,7 +46,7 @@ export ONT_USER="your-username"
 export ONT_PASS="your-password"
 export SCRAPE_INTERVAL="30"
 
-./target/release/huawei-ont-metrics
+./target/release/huawei_ont_exporter
 ```
 
 ### Metrics
