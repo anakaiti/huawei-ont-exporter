@@ -154,17 +154,52 @@ All metrics prefixed with `huawei_ont_`:
 
 ## Deployment
 
-### Docker (Future)
-```dockerfile
-FROM rust:1-slim as builder
-WORKDIR /app
-COPY . .
-RUN cargo build --release
+### Docker (Production)
 
-FROM debian:bookworm-slim
-COPY --from=builder /app/target/release/huawei_ont_exporter /usr/local/bin/
-EXPOSE 8000
-ENTRYPOINT ["huawei_ont_exporter"]
+The Docker image is built automatically on releases and published to GitHub Container Registry (GHCR).
+
+**Security Features:**
+- Distroless base image (minimal attack surface)
+- Runs as nonroot user (UID 65532)
+- No shell or package manager
+- Read-only root filesystem compatible
+
+**Pull and run:**
+```bash
+# Pull the latest release
+docker pull ghcr.io/anakaiti/huawei-ont-exporter:latest
+
+# Run with environment variables
+docker run -d \
+  -p 8000:8000 \
+  -e ONT_URL="http://192.168.100.1" \
+  -e ONT_USER="root" \
+  -e ONT_PASS="your-password" \
+  --read-only \
+  ghcr.io/anakaiti/huawei-ont-exporter:latest
+```
+
+**Docker Compose:**
+```yaml
+version: '3.8'
+services:
+  huawei-ont-exporter:
+    image: ghcr.io/anakaiti/huawei-ont-exporter:latest
+    container_name: huawei-ont-exporter
+    ports:
+      - "8000:8000"
+    environment:
+      - ONT_URL=http://192.168.100.1
+      - ONT_USER=root
+      - ONT_PASS=${ONT_PASS}
+      - RUST_LOG=info
+    read_only: true
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/huawei_ont_exporter", "--health-check"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
 ```
 
 ### Systemd Service (Example)
