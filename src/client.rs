@@ -36,28 +36,28 @@ impl OntClient {
         
         // Try to fetch additional metrics (optional - don't fail if unavailable)
         if let Ok(device_html) = self.fetch_device_info().await {
-            if let Ok(device_metrics) = parse_device_info_page(&device_html) {
+            let _ = parse_device_info_page(&device_html).map(|device_metrics| {
                 result.device_model = device_metrics.model;
                 result.serial_number = device_metrics.serial;
                 result.software_version = device_metrics.version;
                 result.uptime_seconds = device_metrics.uptime;
-            }
+            });
         }
         
         if let Ok(wan_html) = self.fetch_wan_info().await {
-            if let Ok(wan_metrics) = parse_wan_page(&wan_html) {
+            let _ = parse_wan_page(&wan_html).map(|wan_metrics| {
                 result.wan_status = wan_metrics.status;
                 result.wan_ip = wan_metrics.ip;
                 result.wan_rx_bytes = wan_metrics.rx_bytes;
                 result.wan_tx_bytes = wan_metrics.tx_bytes;
-            }
+            });
         }
         
         if let Ok(lan_html) = self.fetch_lan_info().await {
-            if let Ok(client_metrics) = parse_lan_page(&lan_html) {
+            let _ = parse_lan_page(&lan_html).map(|client_metrics| {
                 result.lan_clients_count = client_metrics.lan_count;
                 result.wifi_clients_count = client_metrics.wifi_count;
-            }
+            });
         }
         
         let logout_res = self.logout().await;
@@ -156,15 +156,13 @@ impl OntClient {
         
         for path in &paths {
             let url = format!("{}{}", self.base_url, path);
-            if let Ok(resp) = self.client.get(&url).send().await {
-                if resp.status().is_success() {
-                    if let Ok(html) = resp.text().await {
-                        if !html.is_empty() && !html.contains("404") {
-                            return Ok(html);
-                        }
-                    }
-                }
-            }
+            let _resp = match self.client.get(&url).send().await {
+                Ok(r) if r.status().is_success() => match r.text().await {
+                    Ok(html) if !html.is_empty() && !html.contains("404") => return Ok(html),
+                    _ => continue,
+                },
+                _ => continue,
+            };
         }
         
         Err(anyhow!("Could not fetch device info from any known path"))
@@ -183,15 +181,13 @@ impl OntClient {
         
         for path in &paths {
             let url = format!("{}{}", self.base_url, path);
-            if let Ok(resp) = self.client.get(&url).send().await {
-                if resp.status().is_success() {
-                    if let Ok(html) = resp.text().await {
-                        if !html.is_empty() && !html.contains("404") {
-                            return Ok(html);
-                        }
-                    }
-                }
-            }
+            let _resp = match self.client.get(&url).send().await {
+                Ok(r) if r.status().is_success() => match r.text().await {
+                    Ok(html) if !html.is_empty() && !html.contains("404") => return Ok(html),
+                    _ => continue,
+                },
+                _ => continue,
+            };
         }
         
         Err(anyhow!("Could not fetch WAN info from any known path"))
@@ -211,15 +207,13 @@ impl OntClient {
         
         for path in &paths {
             let url = format!("{}{}", self.base_url, path);
-            if let Ok(resp) = self.client.get(&url).send().await {
-                if resp.status().is_success() {
-                    if let Ok(html) = resp.text().await {
-                        if !html.is_empty() && !html.contains("404") {
-                            return Ok(html);
-                        }
-                    }
-                }
-            }
+            let _resp = match self.client.get(&url).send().await {
+                Ok(r) if r.status().is_success() => match r.text().await {
+                    Ok(html) if !html.is_empty() && !html.contains("404") => return Ok(html),
+                    _ => continue,
+                },
+                _ => continue,
+            };
         }
         
         Err(anyhow!("Could not fetch LAN info from any known path"))
@@ -296,11 +290,14 @@ fn parse_device_info_page(html: &str) -> Result<DevicePageInfo> {
     ];
     
     for pattern in &uptime_patterns {
-        if let Some(caps) = Regex::new(pattern).unwrap().captures(html) {
-            if let Ok(uptime) = caps.get(1).unwrap().as_str().parse::<u64>() {
-                info.uptime = Some(uptime);
-                break;
-            }
+        if let Some(uptime) = Regex::new(pattern)
+            .unwrap()
+            .captures(html)
+            .and_then(|caps| caps.get(1))
+            .and_then(|m| m.as_str().parse::<u64>().ok())
+        {
+            info.uptime = Some(uptime);
+            break;
         }
     }
     
@@ -337,17 +334,17 @@ fn parse_wan_page(html: &str) -> Result<WanPageInfo> {
     }
     
     // Traffic patterns
-    if let Some(caps) = Regex::new(r"RXBytes[=:]\s*(\d+)").unwrap().captures(html) {
-        if let Ok(bytes) = caps.get(1).unwrap().as_str().parse::<u64>() {
-            wan.rx_bytes = Some(bytes);
-        }
-    }
+    wan.rx_bytes = Regex::new(r"RXBytes[=:]\s*(\d+)")
+        .unwrap()
+        .captures(html)
+        .and_then(|caps| caps.get(1))
+        .and_then(|m| m.as_str().parse::<u64>().ok());
     
-    if let Some(caps) = Regex::new(r"TXBytes[=:]\s*(\d+)").unwrap().captures(html) {
-        if let Ok(bytes) = caps.get(1).unwrap().as_str().parse::<u64>() {
-            wan.tx_bytes = Some(bytes);
-        }
-    }
+    wan.tx_bytes = Regex::new(r"TXBytes[=:]\s*(\d+)")
+        .unwrap()
+        .captures(html)
+        .and_then(|caps| caps.get(1))
+        .and_then(|m| m.as_str().parse::<u64>().ok());
     
     Ok(wan)
 }
@@ -369,11 +366,14 @@ fn parse_lan_page(html: &str) -> Result<ClientPageInfo> {
     ];
     
     for pattern in &lan_patterns {
-        if let Some(caps) = Regex::new(pattern).unwrap().captures(html) {
-            if let Ok(count) = caps.get(1).unwrap().as_str().parse::<u32>() {
-                clients.lan_count = Some(count);
-                break;
-            }
+        if let Some(count) = Regex::new(pattern)
+            .unwrap()
+            .captures(html)
+            .and_then(|caps| caps.get(1))
+            .and_then(|m| m.as_str().parse::<u32>().ok())
+        {
+            clients.lan_count = Some(count);
+            break;
         }
     }
     
@@ -383,11 +383,14 @@ fn parse_lan_page(html: &str) -> Result<ClientPageInfo> {
     ];
     
     for pattern in &wifi_patterns {
-        if let Some(caps) = Regex::new(pattern).unwrap().captures(html) {
-            if let Ok(count) = caps.get(1).unwrap().as_str().parse::<u32>() {
-                clients.wifi_count = Some(count);
-                break;
-            }
+        if let Some(count) = Regex::new(pattern)
+            .unwrap()
+            .captures(html)
+            .and_then(|caps| caps.get(1))
+            .and_then(|m| m.as_str().parse::<u32>().ok())
+        {
+            clients.wifi_count = Some(count);
+            break;
         }
     }
     

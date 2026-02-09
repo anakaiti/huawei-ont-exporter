@@ -155,25 +155,19 @@ fn parse_device_info(html: &str) -> Result<DeviceInfo> {
 
     // Try to find uptime (various formats)
     // Format 1: new stDeviceInfo(..., "12345", ...)
-    if let Some(caps) = Regex::new(r#"new stDeviceInfo\([^)]*"(\d+)"[^)]*\)"#)
+    info.uptime = Regex::new(r#"new stDeviceInfo\([^)]*"(\d+)"[^)]*\)"#)
         .unwrap()
         .captures(html)
-    {
-        if let Ok(uptime) = caps.get(1).unwrap().as_str().parse::<u64>() {
-            info.uptime = Some(uptime);
-        }
-    }
+        .and_then(|caps| caps.get(1))
+        .and_then(|m| m.as_str().parse::<u64>().ok());
 
     // Format 2: UpTime="12345"
     if info.uptime.is_none() {
-        if let Some(caps) = Regex::new(r#"UpTime[=:]\s*["']?(\d+)["']?"#)
+        info.uptime = Regex::new(r#"UpTime[=:]\s*["']?(\d+)["']?"#)
             .unwrap()
             .captures(html)
-        {
-            if let Ok(uptime) = caps.get(1).unwrap().as_str().parse::<u64>() {
-                info.uptime = Some(uptime);
-            }
-        }
+            .and_then(|caps| caps.get(1))
+            .and_then(|m| m.as_str().parse::<u64>().ok());
     }
 
     Ok(info)
@@ -207,17 +201,17 @@ fn parse_wan_metrics(html: &str) -> Result<WanMetrics> {
     }
 
     // Try to find RX/TX bytes
-    if let Some(caps) = Regex::new(r"RXBytes[=:]\s*(\d+)").unwrap().captures(html) {
-        if let Ok(bytes) = caps.get(1).unwrap().as_str().parse::<u64>() {
-            wan.rx_bytes = Some(bytes);
-        }
-    }
+    wan.rx_bytes = Regex::new(r"RXBytes[=:]\s*(\d+)")
+        .unwrap()
+        .captures(html)
+        .and_then(|caps| caps.get(1))
+        .and_then(|m| m.as_str().parse::<u64>().ok());
 
-    if let Some(caps) = Regex::new(r"TXBytes[=:]\s*(\d+)").unwrap().captures(html) {
-        if let Ok(bytes) = caps.get(1).unwrap().as_str().parse::<u64>() {
-            wan.tx_bytes = Some(bytes);
-        }
-    }
+    wan.tx_bytes = Regex::new(r"TXBytes[=:]\s*(\d+)")
+        .unwrap()
+        .captures(html)
+        .and_then(|caps| caps.get(1))
+        .and_then(|m| m.as_str().parse::<u64>().ok());
 
     Ok(wan)
 }
@@ -229,27 +223,18 @@ struct ClientMetrics {
 }
 
 fn parse_client_metrics(html: &str) -> Result<ClientMetrics> {
-    let mut clients = ClientMetrics::default();
-
-    // Try to find LAN client count
-    if let Some(caps) = Regex::new(r"LANClients[=:]\s*(\d+)")
-        .unwrap()
-        .captures(html)
-    {
-        if let Ok(count) = caps.get(1).unwrap().as_str().parse::<u32>() {
-            clients.lan_count = Some(count);
-        }
-    }
-
-    // Try to find WiFi client count
-    if let Some(caps) = Regex::new(r"WiFiClients[=:]\s*(\d+)")
-        .unwrap()
-        .captures(html)
-    {
-        if let Ok(count) = caps.get(1).unwrap().as_str().parse::<u32>() {
-            clients.wifi_count = Some(count);
-        }
-    }
+    let clients = ClientMetrics {
+        lan_count: Regex::new(r"LANClients[=:]\s*(\d+)")
+            .unwrap()
+            .captures(html)
+            .and_then(|caps| caps.get(1))
+            .and_then(|m| m.as_str().parse::<u32>().ok()),
+        wifi_count: Regex::new(r"WiFiClients[=:]\s*(\d+)")
+            .unwrap()
+            .captures(html)
+            .and_then(|caps| caps.get(1))
+            .and_then(|m| m.as_str().parse::<u32>().ok()),
+    };
 
     Ok(clients)
 }
