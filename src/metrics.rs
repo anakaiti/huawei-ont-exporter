@@ -32,7 +32,7 @@ lazy_static! {
     // Device Info Metrics (using labels - always value 1)
     pub static ref DEVICE_INFO: IntGaugeVec = register_int_gauge_vec!(
         Opts::new("huawei_ont_device_info", "Device information (always 1)"),
-        &["model", "serial", "version"]
+        &["model", "serial", "hardware_version", "software_version", "mac_address"]
     )
     .expect("metric registration failed");
 
@@ -43,9 +43,9 @@ lazy_static! {
     .expect("metric registration failed");
 
     // WAN Metrics
-    pub static ref WAN_STATUS: Gauge = register_gauge!(
-        Opts::new("huawei_ont_wan_status", "WAN connection status (1=up, 0=down)")
-            .const_label("ip", "unknown")
+    pub static ref WAN_STATUS: IntGaugeVec = register_int_gauge_vec!(
+        Opts::new("huawei_ont_wan_status", "WAN connection status (1=up, 0=down)"),
+        &["ip"]
     )
     .expect("metric registration failed");
 
@@ -71,6 +71,12 @@ lazy_static! {
     pub static ref WIFI_CLIENTS: Gauge = register_gauge!(
         "huawei_ont_wifi_clients",
         "Number of connected WiFi clients"
+    )
+    .expect("metric registration failed");
+
+    pub static ref TOTAL_CLIENTS: Gauge = register_gauge!(
+        "huawei_ont_total_clients",
+        "Total number of connected clients"
     )
     .expect("metric registration failed");
 
@@ -116,9 +122,11 @@ pub fn update_metrics(data: &OntMetrics) {
     // Device info metrics with labels
     let model = data.device_model.as_deref().unwrap_or("unknown");
     let serial = data.serial_number.as_deref().unwrap_or("unknown");
-    let version = data.software_version.as_deref().unwrap_or("unknown");
+    let hw_version = data.hardware_version.as_deref().unwrap_or("unknown");
+    let sw_version = data.software_version.as_deref().unwrap_or("unknown");
+    let mac = data.mac_address.as_deref().unwrap_or("unknown");
     DEVICE_INFO
-        .with_label_values(&[model, serial, version])
+        .with_label_values(&[model, serial, hw_version, sw_version, mac])
         .set(1);
 
     // Uptime metric
@@ -128,15 +136,16 @@ pub fn update_metrics(data: &OntMetrics) {
 
     // WAN metrics (optional)
     if let Some(status) = &data.wan_status {
-        let status_value = if status.eq_ignore_ascii_case("up")
-            || status.eq_ignore_ascii_case("connected")
+        let status_value = if status.eq_ignore_ascii_case("connected")
+            || status.eq_ignore_ascii_case("up")
             || status.eq_ignore_ascii_case("online")
         {
             1.0
         } else {
             0.0
         };
-        WAN_STATUS.set(status_value);
+        let ip = data.wan_ip.as_deref().unwrap_or("unknown");
+        WAN_STATUS.with_label_values(&[ip]).set(status_value as i64);
     }
 
     if let Some(rx_bytes) = data.wan_rx_bytes {
@@ -154,5 +163,9 @@ pub fn update_metrics(data: &OntMetrics) {
 
     if let Some(wifi_count) = data.wifi_clients_count {
         WIFI_CLIENTS.set(wifi_count as f64);
+    }
+
+    if let Some(total_count) = data.total_clients_count {
+        TOTAL_CLIENTS.set(total_count as f64);
     }
 }

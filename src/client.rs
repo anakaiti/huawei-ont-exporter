@@ -44,6 +44,8 @@ impl OntClient {
                         result.serial_number = device_metrics.serial;
                         result.software_version = device_metrics.version;
                         result.uptime_seconds = device_metrics.uptime;
+                        result.hardware_version = device_metrics.hardware_version;
+                        result.mac_address = device_metrics.mac;
                     }
                     Err(e) => debug!("Failed to parse device info: {}", e),
                 }
@@ -74,6 +76,7 @@ impl OntClient {
                         debug!("LAN info parsed successfully");
                         result.lan_clients_count = client_metrics.lan_count;
                         result.wifi_clients_count = client_metrics.wifi_count;
+                        result.total_clients_count = client_metrics.total_count;
                     }
                     Err(e) => debug!("Failed to parse LAN info: {}", e),
                 }
@@ -169,21 +172,23 @@ impl OntClient {
         
         // Common paths for device info on Huawei ONTs
         let paths = [
+            "/html/ssmp/deviceinfo/deviceinfo.asp",
             "/html/amp/deviceinfo/deviceinfo.asp",
             "/html/amp/basic/deviceinfo.asp", 
             "/html/advance/deviceinfo/deviceinfo.asp",
-            "/html/ssmp/deviceinfo/deviceinfo.asp",
         ];
         
         for path in &paths {
             let url = format!("{}{}", self.base_url, path);
-            let _resp = match self.client.get(&url).send().await {
-                Ok(r) if r.status().is_success() => match r.text().await {
-                    Ok(html) if !html.is_empty() && !html.contains("404") => return Ok(html),
+            match self.client.get(&url).send().await {
+                Ok(resp) => match resp.text().await {
+                    Ok(html) if !html.is_empty() && !html.contains("404") && html.contains("stDeviceInfo") => {
+                        return Ok(html);
+                    }
                     _ => continue,
                 },
                 _ => continue,
-            };
+            }
         }
         
         Err(anyhow!("Could not fetch device info from any known path"))
@@ -194,21 +199,23 @@ impl OntClient {
         debug!("Fetching WAN info");
         
         let paths = [
+            "/html/bbsp/waninfo/waninfo.asp",
             "/html/amp/internet/internet.asp",
             "/html/amp/wan/wan.asp",
             "/html/advance/internet/internet.asp",
-            "/html/bbsp/wan/wan.asp",
         ];
         
         for path in &paths {
             let url = format!("{}{}", self.base_url, path);
-            let _resp = match self.client.get(&url).send().await {
-                Ok(r) if r.status().is_success() => match r.text().await {
-                    Ok(html) if !html.is_empty() && !html.contains("404") => return Ok(html),
+            match self.client.get(&url).send().await {
+                Ok(resp) => match resp.text().await {
+                    Ok(html) if !html.is_empty() && !html.contains("404") => {
+                        return Ok(html);
+                    }
                     _ => continue,
                 },
                 _ => continue,
-            };
+            }
         }
         
         Err(anyhow!("Could not fetch WAN info from any known path"))
@@ -219,22 +226,23 @@ impl OntClient {
         debug!("Fetching LAN info");
         
         let paths = [
+            "/html/bbsp/common/GetLanUserDevInfo.asp",
             "/html/amp/lanuser/lanuser.asp",
             "/html/amp/user/user.asp",
             "/html/advance/user/user.asp",
-            "/html/bbsp/user/user.asp",
-            "/html/amp/wlan/user.asp",
         ];
         
         for path in &paths {
             let url = format!("{}{}", self.base_url, path);
-            let _resp = match self.client.get(&url).send().await {
-                Ok(r) if r.status().is_success() => match r.text().await {
-                    Ok(html) if !html.is_empty() && !html.contains("404") => return Ok(html),
+            match self.client.get(&url).send().await {
+                Ok(resp) => match resp.text().await {
+                    Ok(html) if !html.is_empty() && !html.contains("404") => {
+                        return Ok(html);
+                    }
                     _ => continue,
                 },
                 _ => continue,
-            };
+            }
         }
         
         Err(anyhow!("Could not fetch LAN info from any known path"))
@@ -254,6 +262,8 @@ pub struct DevicePageInfo {
     pub model: Option<String>,
     pub serial: Option<String>,
     pub version: Option<String>,
+    pub hardware_version: Option<String>,
+    pub mac: Option<String>,
     pub uptime: Option<u64>,
 }
 
@@ -267,44 +277,50 @@ pub struct WanPageInfo {
 pub struct ClientPageInfo {
     pub lan_count: Option<u32>,
     pub wifi_count: Option<u32>,
+    pub total_count: Option<u32>,
 }
 
 // Parse device info page
 fn parse_device_info_page(html: &str) -> Result<DevicePageInfo> {
     use regex::Regex;
+    use crate::parser::decode_hex_escapes;
     
     let mut info = DevicePageInfo {
         model: None,
         serial: None,
         version: None,
+        hardware_version: None,
+        mac: None,
         uptime: None,
     };
     
-    // Model patterns
-    let model_patterns = [
-        r#"ProductClass["']?\s*[=:]\s*["']([^"']+)["']"#,
-        r#"ModelName["']?\s*[=:]\s*["']([^"']+)["']"#,
-        r#"new stDeviceInfo\([^)]*["']([A-Z]{2}\d{4,}[A-Z]?\d*)["']"#,
-    ];
-    
-    for pattern in &model_patterns {
-        if let Some(caps) = Regex::new(pattern).unwrap().captures(html) {
-            info.model = Some(caps.get(1).unwrap().as_str().to_string());
-            break;
+    // Parse stDeviceInfo array: new stDeviceInfo("domain","serial","hardware","software","model",...)
+    // Format: "485754439A54FCAF","26AD\x2eA","V5R020C10S254","HG8145V5",...
+    if let Some(caps) = Regex::new(r#"new stDeviceInfo\(([^)]+)\)"#).unwrap().captures(html) {
+        let args_str = caps.get(1).unwrap().as_str();
+        let args: Vec<&str> = args_str.split(',').collect();
+        
+        if args.len() >= 2 {
+            info.serial = Some(decode_hex_escapes(args[1].trim().trim_matches('"')));
+        }
+        if args.len() >= 3 {
+            info.hardware_version = Some(decode_hex_escapes(args[2].trim().trim_matches('"')));
+        }
+        if args.len() >= 4 {
+            info.version = Some(decode_hex_escapes(args[3].trim().trim_matches('"')));
+        }
+        if args.len() >= 5 {
+            info.model = Some(decode_hex_escapes(args[4].trim().trim_matches('"')));
+        }
+        if args.len() >= 8 {
+            // MAC address is at position 8 (index 7)
+            let mac_encoded = args[7].trim().trim_matches('"');
+            let mac = decode_hex_escapes(mac_encoded);
+            info.mac = Some(mac);
         }
     }
     
-    // Serial patterns
-    if let Some(caps) = Regex::new(r#"SerialNumber["']?\s*[=:]\s*["']([^"']+)["']"#).unwrap().captures(html) {
-        info.serial = Some(caps.get(1).unwrap().as_str().to_string());
-    }
-    
-    // Version patterns
-    if let Some(caps) = Regex::new(r#"SoftwareVersion["']?\s*[=:]\s*["']([^"']+)["']"#).unwrap().captures(html) {
-        info.version = Some(caps.get(1).unwrap().as_str().to_string());
-    }
-    
-    // Uptime patterns
+    // Uptime patterns (from optical info or separate calls)
     let uptime_patterns = [
         r"UpTime[=:]\s*(\d+)",
         r"new stDeviceInfo\([^)]*(\d{5,})[^)]*\)",
@@ -336,36 +352,22 @@ fn parse_wan_page(html: &str) -> Result<WanPageInfo> {
         tx_bytes: None,
     };
     
-    // Status patterns
-    let status_patterns = [
-        r#"WANStatus["']?\s*[=:]\s*["']([^"']+)["']"#,
-        r#"ConnectionStatus["']?\s*[=:]\s*["']([^"']+)["']"#,
-    ];
-    
-    for pattern in &status_patterns {
-        if let Some(caps) = Regex::new(pattern).unwrap().captures(html) {
-            wan.status = Some(caps.get(1).unwrap().as_str().to_string());
-            break;
-        }
+    // Look for WAN status in CurrentWan object
+    if let Some(caps) = Regex::new(r#"CurrentWan\.Status\s*=\s*['"]([^'"]+)['"]"#).unwrap().captures(html) {
+        wan.status = Some(caps.get(1).unwrap().as_str().to_string());
     }
     
-    // IP patterns
-    if let Some(caps) = Regex::new(r#"WANIP["']?\s*[=:]\s*["'](\d+\.\d+\.\d+\.\d+)["']"#).unwrap().captures(html) {
+    // Look for IPv4 IP address
+    if let Some(caps) = Regex::new(r#"IPv4IPAddress\s*=\s*['"](\d+\.\d+\.\d+\.\d+)['"]"#).unwrap().captures(html) {
         wan.ip = Some(caps.get(1).unwrap().as_str().to_string());
     }
     
-    // Traffic patterns
-    wan.rx_bytes = Regex::new(r"RXBytes[=:]\s*(\d+)")
-        .unwrap()
-        .captures(html)
-        .and_then(|caps| caps.get(1))
-        .and_then(|m| m.as_str().parse::<u64>().ok());
-    
-    wan.tx_bytes = Regex::new(r"TXBytes[=:]\s*(\d+)")
-        .unwrap()
-        .captures(html)
-        .and_then(|caps| caps.get(1))
-        .and_then(|m| m.as_str().parse::<u64>().ok());
+    // Alternative: from AddressList
+    if wan.ip.is_none()
+        && let Some(caps) = Regex::new(r#"IPAddress['"]\s*[=:]\s*['"](\d+\.\d+\.\d+\.\d+)['"]"#).unwrap().captures(html)
+    {
+        wan.ip = Some(caps.get(1).unwrap().as_str().to_string());
+    }
     
     Ok(wan)
 }
@@ -377,49 +379,34 @@ fn parse_lan_page(html: &str) -> Result<ClientPageInfo> {
     let mut clients = ClientPageInfo {
         lan_count: None,
         wifi_count: None,
+        total_count: None,
     };
     
-    // Count patterns
-    let lan_patterns = [
-        r"LANClients[=:]\s*(\d+)",
-        r"EthernetClients[=:]\s*(\d+)",
-        r"new Array\(new stUserInfo\([^)]+\),\s*null\);",
-    ];
+    // Count USERDevice entries in the array
+    let user_device_re = Regex::new(r"new\s+(?:USERDevice|USERDeviceNew)\(").unwrap();
+    let total_count = user_device_re.find_iter(html).count() as u32;
     
-    for pattern in &lan_patterns {
-        if let Some(count) = Regex::new(pattern)
+    if total_count > 0 {
+        clients.total_count = Some(total_count);
+        
+        // Parse actual array entries to count LAN vs WiFi
+        // Array entries look like: new USERDevice("...","...","...","LAN2",...)
+        // The Port is the 4th parameter (index 3)
+        let lan_count = Regex::new(r#"new\s+(?:USERDevice|USERDeviceNew)\([^)]*"(LAN\d*)"[^)]*\)"#)
             .unwrap()
-            .captures(html)
-            .and_then(|caps| caps.get(1))
-            .and_then(|m| m.as_str().parse::<u32>().ok())
-        {
-            clients.lan_count = Some(count);
-            break;
-        }
-    }
-    
-    let wifi_patterns = [
-        r"WiFiClients[=:]\s*(\d+)",
-        r"WLANClients[=:]\s*(\d+)",
-    ];
-    
-    for pattern in &wifi_patterns {
-        if let Some(count) = Regex::new(pattern)
+            .find_iter(html)
+            .count() as u32;
+        let wifi_count = Regex::new(r#"new\s+(?:USERDevice|USERDeviceNew)\([^)]*"(SSID\d*)"[^)]*\)"#)
             .unwrap()
-            .captures(html)
-            .and_then(|caps| caps.get(1))
-            .and_then(|m| m.as_str().parse::<u32>().ok())
-        {
-            clients.wifi_count = Some(count);
-            break;
+            .find_iter(html)
+            .count() as u32;
+        
+        if lan_count > 0 {
+            clients.lan_count = Some(lan_count);
         }
-    }
-    
-    // Try to count stUserInfo entries for more accurate count
-    let user_re = Regex::new(r"new stUserInfo\(").unwrap();
-    let user_count = user_re.find_iter(html).count() as u32;
-    if user_count > 0 && clients.lan_count.is_none() {
-        clients.lan_count = Some(user_count);
+        if wifi_count > 0 {
+            clients.wifi_count = Some(wifi_count);
+        }
     }
     
     Ok(clients)

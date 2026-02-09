@@ -13,7 +13,9 @@ pub struct OntMetrics {
     // Device info metrics (optional)
     pub device_model: Option<String>,
     pub serial_number: Option<String>,
+    pub hardware_version: Option<String>,
     pub software_version: Option<String>,
+    pub mac_address: Option<String>,
     pub uptime_seconds: Option<u64>,
 
     // WAN/Internet metrics (optional)
@@ -25,6 +27,7 @@ pub struct OntMetrics {
     // LAN/WiFi metrics (optional)
     pub lan_clients_count: Option<u32>,
     pub wifi_clients_count: Option<u32>,
+    pub total_clients_count: Option<u32>,
 }
 
 pub fn parse_ont_metrics(html: &str) -> Result<OntMetrics> {
