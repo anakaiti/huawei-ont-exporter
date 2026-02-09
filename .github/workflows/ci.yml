@@ -29,3 +29,80 @@ jobs:
 
     - name: Run clippy
       run: cargo clippy -- -D warnings
+
+  smoke-test:
+    runs-on: ubuntu-latest
+    needs: build
+
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Rust
+      uses: dtolnay/rust-toolchain@stable
+
+    - name: Build release binary
+      run: cargo build --release
+
+    - name: Start server and run smoke tests
+      run: |
+        # Set dummy env vars for smoke test (HTTP server will work even if scraper fails)
+        export ONT_URL="http://localhost:8080"
+        export ONT_USER="test"
+        export ONT_PASS="test"
+        
+        # Start server in background
+        ./target/release/huawei_ont_exporter &
+        SERVER_PID=$!
+        
+        # Wait for server to be ready (max 30 seconds)
+        echo "Waiting for server to start..."
+        for i in {1..30}; do
+          if curl -s http://localhost:8000/health > /dev/null 2>&1; then
+            echo "Server is ready!"
+            break
+          fi
+          if [ $i -eq 30 ]; then
+            echo "Server failed to start within 30 seconds"
+            kill $SERVER_PID 2>/dev/null || true
+            exit 1
+          fi
+          sleep 1
+        done
+        
+        # Test health endpoint
+        echo "Testing /health endpoint..."
+        HEALTH_RESPONSE=$(curl -s -w "%{http_code}" -o /tmp/health_body http://localhost:8000/health)
+        if [ "$HEALTH_RESPONSE" != "200" ]; then
+          echo "Health check failed with status: $HEALTH_RESPONSE"
+          cat /tmp/health_body
+          kill $SERVER_PID 2>/dev/null || true
+          exit 1
+        fi
+        echo "Health check passed: $(cat /tmp/health_body)"
+        
+        # Test metrics endpoint
+        echo "Testing /metrics endpoint..."
+        METRICS_RESPONSE=$(curl -s -w "%{http_code}" -o /tmp/metrics_body http://localhost:8000/metrics)
+        if [ "$METRICS_RESPONSE" != "200" ]; then
+          echo "Metrics endpoint failed with status: $METRICS_RESPONSE"
+          cat /tmp/metrics_body
+          kill $SERVER_PID 2>/dev/null || true
+          exit 1
+        fi
+        
+        # Verify metrics content includes expected Prometheus metrics
+        if ! grep -q "huawei_ont_" /tmp/metrics_body; then
+          echo "Metrics response does not contain expected huawei_ont_ metrics"
+          cat /tmp/metrics_body
+          kill $SERVER_PID 2>/dev/null || true
+          exit 1
+        fi
+        
+        echo "Smoke tests passed!"
+        echo "Sample metrics:"
+        head -20 /tmp/metrics_body
+        
+        # Clean up
+        kill $SERVER_PID 2>/dev/null || true
+        wait $SERVER_PID 2>/dev/null || true
+      timeout-minutes: 2
