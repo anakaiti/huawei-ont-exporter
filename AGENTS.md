@@ -83,6 +83,13 @@ RENOVATE_TOKEN="$(gh auth token)" bunx renovate --platform=github anakaiti/huawe
 - **Cargo.lock committed** - For reproducible builds
 - **Dependabot alerts** - Monitor for security vulnerabilities
 - **gitleaks** - Run before commits to catch secrets
+- **Hardened GitHub Actions** - Using `step-security/harden-runner` to restrict egress traffic
+
+**Hardened Runner Endpoints Allowed:**
+- Crates.io registry endpoints
+- GitHub API endpoints
+- Docker registry endpoints
+- GitHub Container Registry (GHCR)
 
 **Environment Variables Required:**
 - `ONT_URL` - ONT device URL
