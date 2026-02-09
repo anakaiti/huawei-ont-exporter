@@ -1,7 +1,8 @@
 use crate::parser::OntMetrics;
 use lazy_static::lazy_static;
 use prometheus::{
-    register_counter, register_gauge, register_histogram, Counter, Gauge, Histogram, Opts,
+    register_counter, register_gauge, register_histogram, register_int_gauge_vec, Counter, Gauge,
+    Histogram, IntGaugeVec, Opts,
 };
 
 lazy_static! {
@@ -28,9 +29,12 @@ lazy_static! {
     )
     .expect("metric registration failed");
 
-    // Device Info Metrics
-    // Note: Device info (model, serial, version) are available in the scraper
-    // but require Prometheus Info metric type or labels for proper exposure
+    // Device Info Metrics (using labels - always value 1)
+    pub static ref DEVICE_INFO: IntGaugeVec = register_int_gauge_vec!(
+        Opts::new("huawei_ont_device_info", "Device information (always 1)"),
+        &["model", "serial", "version"]
+    )
+    .expect("metric registration failed");
 
     pub static ref UPTIME: Gauge = register_gauge!(
         "huawei_ont_uptime_seconds",
@@ -109,7 +113,15 @@ pub fn update_metrics(data: &OntMetrics) {
     BIAS_CURRENT.set(data.bias_current);
     TEMPERATURE.set(data.temperature);
 
-    // Device info metrics (optional)
+    // Device info metrics with labels
+    let model = data.device_model.as_deref().unwrap_or("unknown");
+    let serial = data.serial_number.as_deref().unwrap_or("unknown");
+    let version = data.software_version.as_deref().unwrap_or("unknown");
+    DEVICE_INFO
+        .with_label_values(&[model, serial, version])
+        .set(1);
+
+    // Uptime metric
     if let Some(uptime) = data.uptime_seconds {
         UPTIME.set(uptime as f64);
     }
