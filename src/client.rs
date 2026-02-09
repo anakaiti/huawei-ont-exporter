@@ -35,29 +35,50 @@ impl OntClient {
             .context("Failed to fetch optical info")?;
         
         // Try to fetch additional metrics (optional - don't fail if unavailable)
-        if let Ok(device_html) = self.fetch_device_info().await {
-            let _ = parse_device_info_page(&device_html).map(|device_metrics| {
-                result.device_model = device_metrics.model;
-                result.serial_number = device_metrics.serial;
-                result.software_version = device_metrics.version;
-                result.uptime_seconds = device_metrics.uptime;
-            });
+        match self.fetch_device_info().await {
+            Ok(device_html) => {
+                match parse_device_info_page(&device_html) {
+                    Ok(device_metrics) => {
+                        debug!("Device info parsed successfully");
+                        result.device_model = device_metrics.model;
+                        result.serial_number = device_metrics.serial;
+                        result.software_version = device_metrics.version;
+                        result.uptime_seconds = device_metrics.uptime;
+                    }
+                    Err(e) => debug!("Failed to parse device info: {}", e),
+                }
+            }
+            Err(e) => debug!("Failed to fetch device info: {}", e),
         }
         
-        if let Ok(wan_html) = self.fetch_wan_info().await {
-            let _ = parse_wan_page(&wan_html).map(|wan_metrics| {
-                result.wan_status = wan_metrics.status;
-                result.wan_ip = wan_metrics.ip;
-                result.wan_rx_bytes = wan_metrics.rx_bytes;
-                result.wan_tx_bytes = wan_metrics.tx_bytes;
-            });
+        match self.fetch_wan_info().await {
+            Ok(wan_html) => {
+                match parse_wan_page(&wan_html) {
+                    Ok(wan_metrics) => {
+                        debug!("WAN info parsed successfully");
+                        result.wan_status = wan_metrics.status;
+                        result.wan_ip = wan_metrics.ip;
+                        result.wan_rx_bytes = wan_metrics.rx_bytes;
+                        result.wan_tx_bytes = wan_metrics.tx_bytes;
+                    }
+                    Err(e) => debug!("Failed to parse WAN info: {}", e),
+                }
+            }
+            Err(e) => debug!("Failed to fetch WAN info: {}", e),
         }
         
-        if let Ok(lan_html) = self.fetch_lan_info().await {
-            let _ = parse_lan_page(&lan_html).map(|client_metrics| {
-                result.lan_clients_count = client_metrics.lan_count;
-                result.wifi_clients_count = client_metrics.wifi_count;
-            });
+        match self.fetch_lan_info().await {
+            Ok(lan_html) => {
+                match parse_lan_page(&lan_html) {
+                    Ok(client_metrics) => {
+                        debug!("LAN info parsed successfully");
+                        result.lan_clients_count = client_metrics.lan_count;
+                        result.wifi_clients_count = client_metrics.wifi_count;
+                    }
+                    Err(e) => debug!("Failed to parse LAN info: {}", e),
+                }
+            }
+            Err(e) => debug!("Failed to fetch LAN info: {}", e),
         }
         
         let logout_res = self.logout().await;

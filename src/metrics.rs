@@ -29,13 +29,8 @@ lazy_static! {
     .expect("metric registration failed");
 
     // Device Info Metrics
-    pub static ref DEVICE_INFO: Gauge = register_gauge!(
-        Opts::new("huawei_ont_device_info", "Device information")
-            .const_label("model", "unknown")
-            .const_label("serial", "unknown")
-            .const_label("version", "unknown")
-    )
-    .expect("metric registration failed");
+    // Note: Device info (model, serial, version) are available in the scraper
+    // but require Prometheus Info metric type or labels for proper exposure
 
     pub static ref UPTIME: Gauge = register_gauge!(
         "huawei_ont_uptime_seconds",
