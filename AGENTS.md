@@ -83,13 +83,21 @@ RENOVATE_TOKEN="$(gh auth token)" bunx renovate --platform=github anakaiti/huawe
 - **Cargo.lock committed** - For reproducible builds
 - **Dependabot alerts** - Monitor for security vulnerabilities
 - **gitleaks** - Run before commits to catch secrets
-- **Hardened GitHub Actions** - Using `step-security/harden-runner` to restrict egress traffic
+- **Hardened GitHub Actions** - Using `step-security/harden-runner` in audit mode to monitor egress traffic
 
-**Hardened Runner Endpoints Allowed:**
-- Crates.io registry endpoints
-- GitHub API endpoints
-- Docker registry endpoints
-- GitHub Container Registry (GHCR)
+**Harden-Runner Configuration:**
+- Currently using `egress-policy: audit` mode
+- Monitors all outbound connections and logs them
+- Provides security insights via: https://app.stepsecurity.io/github/anakaiti/huawei-ont-exporter
+- **Note**: Block mode has timing issues with `actions/checkout` - the firewall rules apply before checkout completes
+
+**Required Endpoints (from audit logs):**
+- github.com:443 (git operations)
+- api.github.com:443 (GitHub API)
+- crates.io:443, index.crates.io:443, static.crates.io:443 (Rust crates)
+- static.rust-lang.org:443 (rustup)
+- results-receiver.actions.githubusercontent.com:443 (GitHub Actions telemetry)
+- productionresultssa*.blob.core.windows.net:443 (Azure blob storage for artifacts/cache)
 
 **Environment Variables Required:**
 - `ONT_URL` - ONT device URL
