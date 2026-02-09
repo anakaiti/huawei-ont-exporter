@@ -21,18 +21,7 @@ jobs:
     - name: Harden Runner
       uses: step-security/harden-runner@v2
       with:
-        egress-policy: block
-        allowed-endpoints: |
-          github.com:443
-          api.github.com:443
-          crates.io:443
-          index.crates.io:443
-          static.crates.io:443
-          static.rust-lang.org:443
-          results-receiver.actions.githubusercontent.com:443
-          productionresultssa10.blob.core.windows.net:443
-          productionresultssa12.blob.core.windows.net:443
-          productionresultssa16.blob.core.windows.net:443
+        egress-policy: audit
 
     - uses: actions/checkout@v6
     
@@ -79,18 +68,7 @@ jobs:
     - name: Harden Runner
       uses: step-security/harden-runner@v2
       with:
-        egress-policy: block
-        allowed-endpoints: |
-          github.com:443
-          api.github.com:443
-          crates.io:443
-          index.crates.io:443
-          static.crates.io:443
-          static.rust-lang.org:443
-          results-receiver.actions.githubusercontent.com:443
-          productionresultssa10.blob.core.windows.net:443
-          productionresultssa12.blob.core.windows.net:443
-          productionresultssa16.blob.core.windows.net:443
+        egress-policy: audit
 
     - uses: actions/checkout@v6
     
