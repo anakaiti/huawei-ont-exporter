@@ -11,7 +11,7 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json", "tracing-log"] }
 lazy_static = "1.5.0"
 log = "0.4.25"
-prometheus = "0.13.4"
+prometheus = "0.14.0"
 regex = "1.11.1"
 reqwest = { version = "0.12.12", features = ["cookies", "json"] }
 scraper = "0.22.0"
