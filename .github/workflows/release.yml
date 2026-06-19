@@ -34,7 +34,7 @@ jobs:
       uses: step-security/harden-runner@v2
       with:
         egress-policy: audit
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@v7
     
     - name: Install Rust
       uses: dtolnay/rust-toolchain@stable
@@ -99,7 +99,7 @@ jobs:
       uses: step-security/harden-runner@v2
       with:
         egress-policy: audit
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@v7
 
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v4
@@ -149,7 +149,7 @@ jobs:
       uses: step-security/harden-runner@v2
       with:
         egress-policy: audit
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@v7
       with:
         fetch-depth: 0
 
